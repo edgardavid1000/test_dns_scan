@@ -7,7 +7,8 @@ let currentDomain = '';
 const STATUS_TEXT = {
     checking: 'Verificando',
     found: 'Encontrado',
-    unknown: 'Posible'
+    unknown: 'Posible',
+    error: 'Error'
 };
 
 // Iniciar escaneo con el botón o la tecla Enter
@@ -97,12 +98,21 @@ function addSubdomainToResults(subdomain) {
     resultsDiv.appendChild(item);
 }
 
-function validateAllSubdomains() {
-    const items = document.querySelectorAll('.subdomain-item');
-    items.forEach(item => {
+async function validateAllSubdomains() {
+    const items = Array.from(document.querySelectorAll('.subdomain-item'));
+    if (!items.length) return;
+
+    const button = document.getElementById('validateButton');
+    button.disabled = true;
+    button.innerHTML = 'Validando <span class="spinner"></span>';
+
+    await Promise.all(items.map(item => {
         const sub = item.querySelector('.subdomain-url').textContent;
-        checkSubdomain(sub, item);
-    });
+        return checkSubdomain(sub, item);
+    }));
+
+    button.disabled = false;
+    button.textContent = 'Validar';
 }
 
 async function checkSubdomain(subdomain, item) {
@@ -110,12 +120,10 @@ async function checkSubdomain(subdomain, item) {
     badge.className = 'status-badge status-checking';
     badge.textContent = STATUS_TEXT['checking'];
     try {
-        const response = await fetch(`https://dns.google/resolve?name=${subdomain}`, {
-            headers: { 'accept': 'application/dns-json' }
-        });
+        const response = await fetch(`/.netlify/functions/validate?subdomain=${encodeURIComponent(subdomain)}`);
+        if (!response.ok) throw new Error('Network error');
         const data = await response.json();
-        const exists = data.Answer && data.Answer.length > 0;
-        if (exists) {
+        if (data.valid) {
             badge.className = 'status-badge status-found';
             badge.textContent = STATUS_TEXT['found'];
             incrementActiveCount();
@@ -124,8 +132,8 @@ async function checkSubdomain(subdomain, item) {
             item.remove();
         }
     } catch (err) {
-        badge.className = 'status-badge status-unknown';
-        badge.textContent = STATUS_TEXT['unknown'];
+        badge.className = 'status-badge status-error';
+        badge.textContent = STATUS_TEXT['error'];
     }
 }
 
