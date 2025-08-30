@@ -119,29 +119,20 @@ async function validateAllSubdomains() {
     const button = document.getElementById('validateButton');
     button.disabled = true;
     button.innerHTML = 'Validando <span class="spinner"></span>';
-    
+
     // Reset counters
     activeCount = 0;
     document.getElementById('activeCount').textContent = '0';
-
-    // Validar en lotes de 5 para evitar sobrecarga
-    const batchSize = 5;
-    for (let i = 0; i < items.length; i += batchSize) {
-        const batch = items.slice(i, i + batchSize);
-        await Promise.all(batch.map(item => {
-            const sub = item.dataset.subdomain;
-            return checkSubdomain(sub, item);
-        }));
-        
-        // Pequeña pausa entre lotes
-        if (i + batchSize < items.length) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-        }
-    }
+    
+    // Validar todos los subdominios en paralelo
+    await Promise.all(items.map(item => {
+        const sub = item.dataset.subdomain;
+        return checkSubdomain(sub, item);
+    }));
 
     button.disabled = false;
     button.textContent = 'Validar';
-    
+
     // Actualizar botón de copiar si quedan subdominios
     const remainingItems = document.querySelectorAll('.subdomain-item').length;
     document.getElementById('copyButton').style.display = remainingItems > 0 ? 'block' : 'none';
