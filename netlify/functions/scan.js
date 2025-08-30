@@ -1,3 +1,7 @@
+exports.config = {
+  maxDuration: 26
+};
+
 exports.handler = async function (event) {
   const domain = event.queryStringParameters?.domain;
   if (!domain) {
