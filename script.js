@@ -1,6 +1,6 @@
-
 let isScanning = false;
 const foundSubdomains = new Set();
+const validatedSubdomains = new Set(); // Nuevo Set para trackear subdominios validados
 let activeCount = 0;
 let currentDomain = '';
 
@@ -29,12 +29,21 @@ function resetUI() {
     document.getElementById('copyButton').style.display = 'none';
     document.getElementById('validateButton').style.display = 'none';
     activeCount = 0;
+    validatedSubdomains.clear(); // Limpiar subdominios validados
 }
 
 function copyResults() {
-    const subs = Array.from(foundSubdomains);
-    navigator.clipboard.writeText(subs.join('\n'))
-        .then(() => alert('Subdominios copiados al portapapeles'))
+    // Copiar solo los subdominios que están actualmente visibles
+    const visibleSubdomains = Array.from(document.querySelectorAll('.subdomain-url'))
+        .map(el => el.textContent);
+    
+    if (visibleSubdomains.length === 0) {
+        alert('No hay subdominios para copiar');
+        return;
+    }
+    
+    navigator.clipboard.writeText(visibleSubdomains.join('\n'))
+        .then(() => alert(`${visibleSubdomains.length} subdominios copiados al portapapeles`))
         .catch(() => showError('No se pudo copiar al portapapeles'));
 }
 
@@ -77,6 +86,10 @@ async function fetchSubdomainsFromFunction(domain) {
         document.getElementById('scanProgress').textContent = '100%';
         document.getElementById('copyButton').style.display = subs.length ? 'block' : 'none';
         document.getElementById('validateButton').style.display = subs.length ? 'block' : 'none';
+        
+        if (subs.length === 0) {
+            document.getElementById('results').innerHTML = '<div class="no-results">No se encontraron subdominios</div>';
+        }
     } catch (err) {
         showError('No se pudo completar el escaneo');
     }
@@ -89,6 +102,7 @@ function addSubdomainToResults(subdomain) {
     const resultsDiv = document.getElementById('results');
     const item = document.createElement('div');
     item.className = 'subdomain-item';
+    item.dataset.subdomain = subdomain; // Agregar data attribute para identificación
     item.innerHTML = `
         <a href="https://${subdomain}" target="_blank" class="subdomain-url">
             ${subdomain}
@@ -105,37 +119,91 @@ async function validateAllSubdomains() {
     const button = document.getElementById('validateButton');
     button.disabled = true;
     button.innerHTML = 'Validando <span class="spinner"></span>';
+    
+    // Reset counters
+    activeCount = 0;
+    document.getElementById('activeCount').textContent = '0';
 
-    await Promise.all(items.map(item => {
-        const sub = item.querySelector('.subdomain-url').textContent;
-        return checkSubdomain(sub, item);
-    }));
+    // Validar en lotes de 5 para evitar sobrecarga
+    const batchSize = 5;
+    for (let i = 0; i < items.length; i += batchSize) {
+        const batch = items.slice(i, i + batchSize);
+        await Promise.all(batch.map(item => {
+            const sub = item.dataset.subdomain;
+            return checkSubdomain(sub, item);
+        }));
+        
+        // Pequeña pausa entre lotes
+        if (i + batchSize < items.length) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+    }
 
     button.disabled = false;
     button.textContent = 'Validar';
+    
+    // Actualizar botón de copiar si quedan subdominios
+    const remainingItems = document.querySelectorAll('.subdomain-item').length;
+    document.getElementById('copyButton').style.display = remainingItems > 0 ? 'block' : 'none';
 }
 
 async function checkSubdomain(subdomain, item) {
     const badge = item.querySelector('.status-badge');
     badge.className = 'status-badge status-checking';
     badge.textContent = STATUS_TEXT['checking'];
+    
     try {
-        const response = await fetch(`/.netlify/functions/validate?subdomain=${encodeURIComponent(subdomain)}`);
-        if (!response.ok) throw new Error('Network error');
+        const response = await fetch(`/.netlify/functions/validate?subdomain=${encodeURIComponent(subdomain)}`, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
         const data = await response.json();
+        
         if (data.valid) {
             badge.className = 'status-badge status-found';
             badge.textContent = STATUS_TEXT['found'];
+            validatedSubdomains.add(subdomain); // Agregar a subdominios validados
             incrementActiveCount();
         } else {
-            foundSubdomains.delete(subdomain);
-            item.remove();
+            // Solo remover del DOM, NO del Set foundSubdomains
+            // para mantener la lista original intacta
+            item.style.animation = 'fadeOut 0.3s ease-out';
+            setTimeout(() => {
+                if (item.parentNode) {
+                    item.parentNode.removeChild(item);
+                }
+            }, 300);
         }
     } catch (err) {
+        console.error('Error validating subdomain:', subdomain, err);
         badge.className = 'status-badge status-error';
         badge.textContent = STATUS_TEXT['error'];
+        // En caso de error, mantener el subdominio visible
     }
 }
+
+// Agregar animación fadeOut
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes fadeOut {
+        from {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        to {
+            opacity: 0;
+            transform: translateX(-10px);
+        }
+    }
+`;
+document.head.appendChild(style);
 
 function incrementActiveCount() {
     activeCount += 1;
