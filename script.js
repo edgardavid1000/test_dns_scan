@@ -71,6 +71,7 @@ async function fetchSubdomainsFromFunction(domain) {
         }
         const subs = await response.json();
         subs.forEach((sub) => addSubdomainToResults(sub));
+        validateAllSubdomains();
         document.getElementById('scanProgress').textContent = '100%';
         document.getElementById('copyButton').style.display = subs.length ? 'block' : 'none';
     } catch (err) {
@@ -89,15 +90,23 @@ function addSubdomainToResults(subdomain) {
         <a href="https://${subdomain}" target="_blank" class="subdomain-url">
             ${subdomain}
         </a>
-        <span class="status-badge status-checking">${STATUS_TEXT['checking']}</span>
+        <span class="status-badge status-unknown">${STATUS_TEXT['unknown']}</span>
     `;
     resultsDiv.appendChild(item);
+}
 
-    checkSubdomain(subdomain, item);
+function validateAllSubdomains() {
+    const items = document.querySelectorAll('.subdomain-item');
+    items.forEach(item => {
+        const sub = item.querySelector('.subdomain-url').textContent;
+        checkSubdomain(sub, item);
+    });
 }
 
 async function checkSubdomain(subdomain, item) {
     const badge = item.querySelector('.status-badge');
+    badge.className = 'status-badge status-checking';
+    badge.textContent = STATUS_TEXT['checking'];
     try {
         const response = await fetch(`https://dns.google/resolve?name=${subdomain}`, {
             headers: { 'accept': 'application/dns-json' }
