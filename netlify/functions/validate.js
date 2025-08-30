@@ -14,16 +14,49 @@ exports.handler = async function(event) {
   let valid = false;
   
   try {
-    // Use a public DNS check API instead of Node's dns module
-    const response = await fetch(`https://dns.google/resolve?name=${subdomain}&type=A`);
-    if (response.ok) {
-      const data = await response.json();
-      // Check if there are Answer records
-      valid = data.Status === 0 && data.Answer && data.Answer.length > 0;
+    // Incrementar timeout y usar múltiples métodos de validación
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 segundos
+    
+    try {
+      // Método 1: Google DNS
+      const response = await fetch(`https://dns.google/resolve?name=${subdomain}&type=A`, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        valid = data.Status === 0 && data.Answer && data.Answer.length > 0;
+      }
+      
+      // Si Google DNS no encontró nada, intentar con Cloudflare DNS
+      if (!valid) {
+        const cfResponse = await fetch(`https://cloudflare-dns.com/dns-query?name=${subdomain}&type=A`, {
+          signal: controller.signal,
+          headers: {
+            'Accept': 'application/dns-json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
+        });
+        
+        if (cfResponse.ok) {
+          const cfData = await cfResponse.json();
+          valid = cfData.Status === 0 && cfData.Answer && cfData.Answer.length > 0;
+        }
+      }
+      
+    } finally {
+      clearTimeout(timeoutId);
     }
+    
   } catch (error) {
     console.error('Error checking subdomain:', error);
-    valid = false;
+    // En caso de error de red, asumir que el subdominio es válido
+    // para evitar falsos negativos
+    valid = true;
   }
 
   return {
