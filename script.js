@@ -25,6 +25,11 @@ function resetUI() {
     activeCount = 0;
 }
 
+function normalizeForSort(subdomain) {
+    const parts = subdomain.split('.');
+    return parts.filter((part, idx) => idx === 0 || part !== parts[idx - 1]).join('.');
+}
+
 async function startScan() {
     if (isScanning) return;
     const input = document.getElementById('domainInput');
@@ -59,7 +64,10 @@ async function fetchSubdomainsFromFunction(domain) {
             return;
         }
         const subs = await response.json();
-        subs.forEach((sub) => addSubdomainToResults(sub));
+        subs
+            .slice()
+            .sort((a, b) => normalizeForSort(a).localeCompare(normalizeForSort(b)))
+            .forEach((sub) => addSubdomainToResults(sub));
         document.getElementById('scanProgress').textContent = '100%';
     } catch (err) {
         showError('No se pudo completar el escaneo');
