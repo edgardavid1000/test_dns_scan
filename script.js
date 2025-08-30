@@ -18,6 +18,7 @@ document.getElementById('domainInput').addEventListener('keypress', (e) => {
     }
 });
 document.getElementById('copyButton').addEventListener('click', copyResults);
+document.getElementById('validateButton').addEventListener('click', validateAllSubdomains);
 
 function resetUI() {
     document.getElementById('results').innerHTML = '';
@@ -25,6 +26,7 @@ function resetUI() {
     document.getElementById('scanProgress').textContent = '0%';
     document.getElementById('stats').style.display = 'flex';
     document.getElementById('copyButton').style.display = 'none';
+    document.getElementById('validateButton').style.display = 'none';
     activeCount = 0;
 }
 
@@ -71,9 +73,9 @@ async function fetchSubdomainsFromFunction(domain) {
         }
         const subs = await response.json();
         subs.forEach((sub) => addSubdomainToResults(sub));
-        validateAllSubdomains();
         document.getElementById('scanProgress').textContent = '100%';
         document.getElementById('copyButton').style.display = subs.length ? 'block' : 'none';
+        document.getElementById('validateButton').style.display = subs.length ? 'block' : 'none';
     } catch (err) {
         showError('No se pudo completar el escaneo');
     }
