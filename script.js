@@ -28,27 +28,9 @@ function resetUI() {
     activeCount = 0;
 }
 
-function getNextLevel(subdomain, domain) {
-    const parts = subdomain.split('.');
-    const domainParts = domain.split('.');
-    const subParts = parts.slice(0, parts.length - domainParts.length);
-    return subParts.length > 0 ? subParts[subParts.length - 1] : '';
-}
-
-function sortSubdomainsByNextLevel(subdomains, domain) {
-    return subdomains.slice().sort((a, b) => {
-        const levelA = getNextLevel(a, domain);
-        const levelB = getNextLevel(b, domain);
-        if (levelA === levelB) {
-            return a.localeCompare(b);
-        }
-        return levelA.localeCompare(levelB);
-    });
-}
-
 function copyResults() {
-    const sorted = sortSubdomainsByNextLevel(Array.from(foundSubdomains), currentDomain);
-    navigator.clipboard.writeText(sorted.join('\n'))
+    const subs = Array.from(foundSubdomains);
+    navigator.clipboard.writeText(subs.join('\n'))
         .then(() => alert('Subdominios copiados al portapapeles'))
         .catch(() => showError('No se pudo copiar al portapapeles'));
 }
@@ -88,10 +70,9 @@ async function fetchSubdomainsFromFunction(domain) {
             return;
         }
         const subs = await response.json();
-        const sorted = sortSubdomainsByNextLevel(subs, domain);
-        sorted.forEach((sub) => addSubdomainToResults(sub));
+        subs.forEach((sub) => addSubdomainToResults(sub));
         document.getElementById('scanProgress').textContent = '100%';
-        document.getElementById('copyButton').style.display = sorted.length ? 'block' : 'none';
+        document.getElementById('copyButton').style.display = subs.length ? 'block' : 'none';
     } catch (err) {
         showError('No se pudo completar el escaneo');
     }
