@@ -44,70 +44,26 @@ async function startScan() {
     button.disabled = true;
     button.innerHTML = 'Escaneando <span class="spinner"></span>';
 
-    await fetchSubdomainsFromAPIs(domain);
+    await fetchSubdomainsFromFunction(domain);
 
     isScanning = false;
     button.disabled = false;
     button.textContent = 'Escanear';
 }
 
-async function fetchSubdomainsFromAPIs(domain) {
-    const services = [
-        `https://jldc.me/anubis/subdomains/${domain}`,
-        `https://crt.sh/?q=%25.${domain}&output=json`,
-        `https://dns.bufferover.run/dns?q=.${domain}`,
-        `https://api.hackertarget.com/hostsearch/?q=${domain}`,
-        `https://sonar.omnisint.io/subdomains/${domain}`
-    ];
-
-    const total = services.length;
-    for (let i = 0; i < total && isScanning; i++) {
-        const service = services[i];
-        try {
-            const response = await fetch(service);
-            if (!response.ok) continue;
-            const text = await response.text();
-            processServiceData(service, text, domain);
-        } catch (err) {
-            console.log(`Service ${service} failed:`, err);
-        }
-        const progress = Math.round(((i + 1) / total) * 100);
-        document.getElementById('scanProgress').textContent = `${progress}%`;
-    }
-}
-
-function processServiceData(service, data, domain) {
-    let subs = [];
+async function fetchSubdomainsFromFunction(domain) {
     try {
-        if (service.includes('jldc.me')) {
-            subs = JSON.parse(data);
-        } else if (service.includes('crt.sh')) {
-            const json = JSON.parse(data);
-            json.forEach((entry) => {
-                entry.name_value.split('\n').forEach((name) => subs.push(name.trim()));
-            });
-        } else if (service.includes('bufferover')) {
-            const json = JSON.parse(data);
-            const entries = [...(json.FDNS_A || []), ...(json.RDNS || []), ...(json.FDNS_CNAME || [])];
-            entries.forEach((item) => {
-                const parts = item.split(',');
-                if (parts[1]) subs.push(parts[1]);
-            });
-        } else if (service.includes('hackertarget')) {
-            subs = data.split('\n').map((line) => line.split(',')[0]);
-        } else if (service.includes('omnisint')) {
-            subs = JSON.parse(data);
+        const response = await fetch(`/.netlify/functions/scan?domain=${encodeURIComponent(domain)}`);
+        if (!response.ok) {
+            showError('Error al comunicarse con el servidor');
+            return;
         }
-    } catch (e) {
-        const regex = new RegExp(`([a-zA-Z0-9.-]+\\.)${domain.replace('.', '\\.')}`, 'gi');
-        subs = data.match(regex) || [];
+        const subs = await response.json();
+        subs.forEach((sub) => addSubdomainToResults(sub));
+        document.getElementById('scanProgress').textContent = '100%';
+    } catch (err) {
+        showError('No se pudo completar el escaneo');
     }
-
-    subs.forEach((sub) => {
-        if (sub.endsWith(domain)) {
-            addSubdomainToResults(sub);
-        }
-    });
 }
 
 function addSubdomainToResults(subdomain) {
