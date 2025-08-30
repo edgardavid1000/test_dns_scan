@@ -1,5 +1,5 @@
-exports.handler = async function(event) {
-  const domain = event.queryStringParameters && event.queryStringParameters.domain;
+exports.handler = async function (event) {
+  const domain = event.queryStringParameters?.domain;
   if (!domain) {
     return {
       statusCode: 400,
@@ -8,63 +8,63 @@ exports.handler = async function(event) {
   }
 
   const services = [
-    `https://jldc.me/anubis/subdomains/${domain}`,
-    `https://crt.sh/?q=%25.${domain}&output=json`,
-    `https://dns.bufferover.run/dns?q=.${domain}`,
-    `https://api.hackertarget.com/hostsearch/?q=${domain}`,
-    `https://sonar.omnisint.io/subdomains/${domain}`
+    { url: `https://jldc.me/anubis/subdomains/${domain}`, type: 'anubis' },
+    { url: `https://crt.sh/?q=%25.${domain}&output=json`, type: 'crt' },
+    { url: `https://dns.bufferover.run/dns?q=.${domain}`, type: 'bufferover' },
+    { url: `https://api.hackertarget.com/hostsearch/?q=${domain}`, type: 'hackertarget' },
+    { url: `https://sonar.omnisint.io/subdomains/${domain}`, type: 'omnisint' }
   ];
 
   const found = new Set();
 
-  const extract = (service, data) => {
-    let subs = [];
-    try {
-      if (service.includes('jldc.me')) {
-        subs = JSON.parse(data);
-      } else if (service.includes('crt.sh')) {
-        const json = JSON.parse(data);
-        json.forEach((entry) => {
-          entry.name_value.split('\n').forEach((name) => subs.push(name.trim()));
-        });
-      } else if (service.includes('bufferover')) {
-        const json = JSON.parse(data);
-        const entries = [ ...(json.FDNS_A || []), ...(json.RDNS || []), ...(json.FDNS_CNAME || []) ];
-        entries.forEach((item) => {
-          const parts = item.split(',');
-          if (parts[1]) subs.push(parts[1]);
-        });
-      } else if (service.includes('hackertarget')) {
-        subs = data.split('\n').map(line => line.split(',')[0]);
-      } else if (service.includes('omnisint')) {
-        subs = JSON.parse(data);
-      }
-    } catch (e) {
-      const regex = new RegExp(`([a-zA-Z0-9.-]+\\.)${domain.replace('.', '\\.')}`, 'gi');
-      subs = data.match(regex) || [];
-    }
-
-    subs.forEach(sub => {
-      if (sub.endsWith(domain)) {
-        found.add(sub);
-      }
-    });
+  const extractors = {
+    anubis: data => JSON.parse(data),
+    crt: data => {
+      const json = JSON.parse(data);
+      const subs = [];
+      json.forEach(entry =>
+        entry.name_value.split('\n').forEach(name => subs.push(name.trim()))
+      );
+      return subs;
+    },
+    bufferover: data => {
+      const json = JSON.parse(data);
+      const entries = [
+        ...(json.FDNS_A || []),
+        ...(json.RDNS || []),
+        ...(json.FDNS_CNAME || [])
+      ];
+      return entries
+        .map(item => item.split(',')[1])
+        .filter(Boolean);
+    },
+    hackertarget: data => data.split('\n').map(line => line.split(',')[0]),
+    omnisint: data => JSON.parse(data)
   };
 
-  for (const service of services) {
+  async function processService(service) {
     try {
-      const response = await fetch(service);
-      if (!response.ok) continue;
+      const response = await fetch(service.url, {
+        headers: { 'User-Agent': 'subdomain-scanner' }
+      });
+      if (!response.ok) return;
       const text = await response.text();
-      extract(service, text);
-    } catch (err) {
+      const subs = (extractors[service.type] || (() => []))(text);
+      subs.forEach(sub => {
+        if (sub.endsWith(domain)) {
+          found.add(sub.toLowerCase());
+        }
+      });
+    } catch {
       // ignore individual service failures
     }
   }
 
+  await Promise.all(services.map(processService));
+
   return {
     statusCode: 200,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(Array.from(found))
+    body: JSON.stringify(Array.from(found).sort())
   };
 };
