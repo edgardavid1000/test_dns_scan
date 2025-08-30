@@ -2,6 +2,7 @@
 let isScanning = false;
 const foundSubdomains = new Set();
 let activeCount = 0;
+let currentDomain = '';
 
 const STATUS_TEXT = {
     checking: 'Verificando',
@@ -16,18 +17,40 @@ document.getElementById('domainInput').addEventListener('keypress', (e) => {
         startScan();
     }
 });
+document.getElementById('copyButton').addEventListener('click', copyResults);
 
 function resetUI() {
     document.getElementById('results').innerHTML = '';
     document.getElementById('activeCount').textContent = '0';
     document.getElementById('scanProgress').textContent = '0%';
     document.getElementById('stats').style.display = 'flex';
+    document.getElementById('copyButton').style.display = 'none';
     activeCount = 0;
 }
 
-function normalizeForSort(subdomain) {
+function getNextLevel(subdomain, domain) {
     const parts = subdomain.split('.');
-    return parts.filter((part, idx) => idx === 0 || part !== parts[idx - 1]).join('.');
+    const domainParts = domain.split('.');
+    const subParts = parts.slice(0, parts.length - domainParts.length);
+    return subParts.length > 0 ? subParts[subParts.length - 1] : '';
+}
+
+function sortSubdomainsByNextLevel(subdomains, domain) {
+    return subdomains.slice().sort((a, b) => {
+        const levelA = getNextLevel(a, domain);
+        const levelB = getNextLevel(b, domain);
+        if (levelA === levelB) {
+            return a.localeCompare(b);
+        }
+        return levelA.localeCompare(levelB);
+    });
+}
+
+function copyResults() {
+    const sorted = sortSubdomainsByNextLevel(Array.from(foundSubdomains), currentDomain);
+    navigator.clipboard.writeText(sorted.join('\n'))
+        .then(() => alert('Subdominios copiados al portapapeles'))
+        .catch(() => showError('No se pudo copiar al portapapeles'));
 }
 
 async function startScan() {
@@ -44,6 +67,7 @@ async function startScan() {
     resetUI();
     isScanning = true;
     foundSubdomains.clear();
+    currentDomain = domain;
 
     const button = document.getElementById('scanButton');
     button.disabled = true;
@@ -64,11 +88,10 @@ async function fetchSubdomainsFromFunction(domain) {
             return;
         }
         const subs = await response.json();
-        subs
-            .slice()
-            .sort((a, b) => normalizeForSort(a).localeCompare(normalizeForSort(b)))
-            .forEach((sub) => addSubdomainToResults(sub));
+        const sorted = sortSubdomainsByNextLevel(subs, domain);
+        sorted.forEach((sub) => addSubdomainToResults(sub));
         document.getElementById('scanProgress').textContent = '100%';
+        document.getElementById('copyButton').style.display = sorted.length ? 'block' : 'none';
     } catch (err) {
         showError('No se pudo completar el escaneo');
     }
