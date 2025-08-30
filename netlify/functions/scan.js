@@ -1,72 +1,106 @@
-const fetch = require('node-fetch');
-
 exports.handler = async function (event) {
   const domain = event.queryStringParameters?.domain;
   if (!domain) {
     return {
       statusCode: 400,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
       body: JSON.stringify({ error: 'Domain parameter is required' })
     };
   }
 
   const services = [
-    { url: `https://jldc.me/anubis/subdomains/${domain}`, type: 'anubis' },
     { url: `https://crt.sh/?q=%25.${domain}&output=json`, type: 'crt' },
-    { url: `https://dns.bufferover.run/dns?q=.${domain}`, type: 'bufferover' },
-    { url: `https://api.hackertarget.com/hostsearch/?q=${domain}`, type: 'hackertarget' },
-    { url: `https://sonar.omnisint.io/subdomains/${domain}`, type: 'omnisint' }
+    { url: `https://api.hackertarget.com/hostsearch/?q=${domain}`, type: 'hackertarget' }
   ];
 
   const found = new Set();
 
   const extractors = {
-    anubis: data => JSON.parse(data),
-    crt: data => {
-      const json = JSON.parse(data);
-      const subs = [];
-      json.forEach(entry =>
-        entry.name_value.split('\n').forEach(name => subs.push(name.trim()))
-      );
-      return subs;
+    crt: (data) => {
+      try {
+        const json = JSON.parse(data);
+        const subs = [];
+        if (Array.isArray(json)) {
+          json.forEach(entry => {
+            if (entry.name_value) {
+              entry.name_value.split('\n').forEach(name => {
+                const trimmed = name.trim();
+                if (trimmed && !trimmed.includes('*')) {
+                  subs.push(trimmed);
+                }
+              });
+            }
+          });
+        }
+        return subs;
+      } catch (e) {
+        console.error('Error parsing crt.sh data:', e);
+        return [];
+      }
     },
-    bufferover: data => {
-      const json = JSON.parse(data);
-      const entries = [
-        ...(json.FDNS_A || []),
-        ...(json.RDNS || []),
-        ...(json.FDNS_CNAME || [])
-      ];
-      return entries
-        .map(item => item.split(',')[1])
-        .filter(Boolean);
-    },
-    hackertarget: data => data.split('\n').map(line => line.split(',')[0]),
-    omnisint: data => JSON.parse(data)
+    hackertarget: (data) => {
+      try {
+        if (data.includes('error')) return [];
+        return data.split('\n')
+          .filter(line => line && !line.includes('error'))
+          .map(line => {
+            const parts = line.split(',');
+            return parts[0] ? parts[0].trim() : null;
+          })
+          .filter(Boolean);
+      } catch (e) {
+        console.error('Error parsing hackertarget data:', e);
+        return [];
+      }
+    }
   };
 
   async function processService(service) {
     try {
       const response = await fetch(service.url, {
-        headers: { 'User-Agent': 'subdomain-scanner' }
+        headers: { 
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
       });
-      if (!response.ok) return;
+      
+      if (!response.ok) {
+        console.log(`Service ${service.type} returned status ${response.status}`);
+        return;
+      }
+      
       const text = await response.text();
-      const subs = (extractors[service.type] || (() => []))(text);
+      if (!text) return;
+      
+      const extractor = extractors[service.type];
+      if (!extractor) return;
+      
+      const subs = extractor(text);
       subs.forEach(sub => {
-        if (sub.endsWith(domain)) {
+        if (sub && sub.endsWith(domain)) {
           found.add(sub.toLowerCase());
         }
       });
-    } catch {
-      // ignore individual service failures
+    } catch (error) {
+      console.error(`Error processing ${service.type}:`, error);
     }
   }
 
   await Promise.all(services.map(processService));
 
+  // Add the main domain if not already present
+  if (!found.has(domain)) {
+    found.add(domain);
+  }
+
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*'
+    },
     body: JSON.stringify(Array.from(found).sort())
   };
 };
