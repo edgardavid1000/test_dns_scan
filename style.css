@@ -203,6 +203,11 @@
             color: #ffffff;
         }
 
+        .status-error {
+            background: #ff6b6b;
+            color: white;
+        }
+
         .error-message {
             background: #ff6b6b;
             color: white;
