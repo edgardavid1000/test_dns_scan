@@ -33,7 +33,6 @@ let activeCount = 0;
 const STATUS_TEXT = {
     checking: 'Verificando',
     found: 'Encontrado',
-    'not-found': 'No encontrado',
     unknown: 'Posible'
 };
 
@@ -47,7 +46,6 @@ document.getElementById('domainInput').addEventListener('keypress', (e) => {
 
 function resetUI() {
     document.getElementById('results').innerHTML = '';
-    document.getElementById('totalFound').textContent = '0';
     document.getElementById('activeCount').textContent = '0';
     document.getElementById('scanProgress').textContent = '0%';
     document.getElementById('stats').style.display = 'flex';
@@ -139,7 +137,6 @@ async function checkCommonSubdomains(domain) {
 function addSubdomainToResults(subdomain) {
     if (foundSubdomains.has(subdomain)) return;
     foundSubdomains.add(subdomain);
-    updateStats();
 
     const resultsDiv = document.getElementById('results');
     const item = document.createElement('div');
@@ -152,29 +149,29 @@ function addSubdomainToResults(subdomain) {
     `;
     resultsDiv.appendChild(item);
 
-    const badge = item.querySelector('.status-badge');
-    checkSubdomain(subdomain, badge);
+    checkSubdomain(subdomain, item);
 }
 
-async function checkSubdomain(subdomain, badge) {
+async function checkSubdomain(subdomain, item) {
+    const badge = item.querySelector('.status-badge');
     try {
         const response = await fetch(`https://dns.google/resolve?name=${subdomain}`, {
             headers: { 'accept': 'application/dns-json' }
         });
         const data = await response.json();
         const exists = data.Answer && data.Answer.length > 0;
-        const status = exists ? 'found' : 'not-found';
-        badge.className = `status-badge status-${status}`;
-        badge.textContent = STATUS_TEXT[status];
-        if (exists) incrementActiveCount();
+        if (exists) {
+            badge.className = 'status-badge status-found';
+            badge.textContent = STATUS_TEXT['found'];
+            incrementActiveCount();
+        } else {
+            foundSubdomains.delete(subdomain);
+            item.remove();
+        }
     } catch (err) {
         badge.className = 'status-badge status-unknown';
         badge.textContent = STATUS_TEXT['unknown'];
     }
-}
-
-function updateStats() {
-    document.getElementById('totalFound').textContent = foundSubdomains.size;
 }
 
 function incrementActiveCount() {
