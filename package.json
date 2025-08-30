@@ -1,16 +1,11 @@
 {
-  "name": "test_dns_scan",
+  "name": "dns-scanner",
   "version": "1.0.0",
-  "description": "",
-  "main": "script.js",
+  "description": "DNS Subdomain Scanner",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": ["dns", "scanner", "subdomains"],
   "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "dependencies": {
-    "node-fetch": "^2.7.0"
-  }
+  "license": "ISC"
 }
